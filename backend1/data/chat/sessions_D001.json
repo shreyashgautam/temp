@@ -1,0 +1,83 @@
+[
+  {
+    "id": "7a66c1d1-f1eb-4ccf-ab18-43f1ef74434f",
+    "title": "Generate a detailed consultation brief for Rahul S",
+    "selectedPatientId": "P005",
+    "createdAt": "2026-03-10T07:14:57.366Z",
+    "updatedAt": "2026-03-10T11:17:10.053Z",
+    "messages": [
+      {
+        "id": "b2f9c461-f2f4-417e-b92d-bbca4aed4c80",
+        "role": "user",
+        "content": "Generate a detailed consultation brief for Rahul Sharma",
+        "timestamp": "2026-03-10T07:15:12.473Z"
+      },
+      {
+        "id": "762ef6ed-3d79-4c74-b573-7fed16e69276",
+        "role": "assistant",
+        "content": "- **Patient:** Rahul Sharma (P001)\n- **Diagnosis:** Type 2 Diabetes, Hypertension\n- **Current medications:** Metformin 500mg, Insulin Glargine 10 units, Sitagliptin 100mg, Hydrochlorothiazide 12.5mg, Ramipril 5mg, Amlodipine 5mg\n- **Abnormal labs/alerts:** eGFR High (109.67mL/min/1.73m²), Urine Albumin High (233.56mg/g), Urine Albumin Low (73.57mg/g), Urine Albumin Low (23.47mg/g), HbA1c High (12.85%), Fasting Glucose High (263.23mg/dL) (+2 more)\n- **Last visit:** 22 May 2024 · Dr. Pillai · Telehealth consult. polyuria. Advised rest and follow-up.\n- **Next steps:** Repeat key labs and schedule follow-up review.\n- **Action plan:** Review adherence, reassess trends, and escalate specialist referral if worsening continues.\n- **Safety:** Urgent review if red-flag symptoms or critical values appear.\n- **Note:** Groq rate limit reached (1m10.848s). Returned from local fallback.",
+        "timestamp": "2026-03-10T07:15:13.810Z"
+      },
+      {
+        "id": "eaa8c67e-3fec-4f9f-a08c-a165034796cf",
+        "role": "user",
+        "content": "tell me about seth",
+        "timestamp": "2026-03-10T07:15:21.075Z"
+      },
+      {
+        "id": "6aea7969-58df-4565-93cf-a861f279fc51",
+        "role": "assistant",
+        "content": "* **Key Issue:** Uncontrolled blood sugar levels (HbA1c: 11.53%) and high blood pressure (147.1mmHg and 158.41mmHg).\n* **Medications:** Current medications include Glipizide 250mg, Pantoprazole 500mg, and Sertraline 25mg; consider adjusting Glipizide dosage to control blood sugar levels.\n* **Abnormal Labs/Alerts:** Elevated TSH (11.44mIU/L), HbA1c (11.53%), and Total Cholesterol (287.99mg/dL); low Vitamin D (9ng/mL) on 2024-12-25.\n* **Next Steps:** Order thyroid function tests to investigate elevated TSH, and consider referring to an endocrinologist for management of uncontrolled blood sugar levels and high blood pressure.\n* **Lab Follow-up:** Repeat HbA1c, lipid profile, and Vitamin D levels in 3 months to monitor the effectiveness of current medications and lifestyle modifications.\n* **Lifestyle Modifications:** Counsel patient on diet, exercise, and stress management to help control blood sugar levels and blood pressure.",
+        "timestamp": "2026-03-10T07:15:23.572Z"
+      },
+      {
+        "id": "8c00b7e0-3ea9-4af1-b365-4eba2e3e6174",
+        "role": "user",
+        "content": "tell all about amit kumar",
+        "timestamp": "2026-03-10T08:25:31.139Z"
+      },
+      {
+        "id": "46108bbd-15f9-477c-9ee2-aff834996530",
+        "role": "assistant",
+        "content": "- **Patient:** Amit Kumar (P019)\n- **Diagnosis:** Liver Cirrhosis, Type 2 Diabetes\n- **Current medications:** Omeprazole 20mg, Paracetamol 500mg, Vitamin D3 60000 IU weekly, Glipizide 5mg (+2 more)\n- **Abnormal labs/alerts:** AST High (193.77U/L), AST High (195.62U/L), Hemoglobin High (17.27g/dL) (+5 more)\n- **Last visit:** 15 May 2024 · Dr. Jain · Routine check-up. Patient mentions weakness. Continue current therapy.\n- **Next steps:** Repeat key labs and schedule follow-up review.",
+        "timestamp": "2026-03-10T08:25:40.981Z"
+      },
+      {
+        "id": "e4a260f0-f25f-46eb-b904-a7ef55c622d1",
+        "role": "user",
+        "content": "Generate a detailed consultation brief for Priya Patel",
+        "timestamp": "2026-03-10T09:50:10.852Z"
+      },
+      {
+        "id": "fc10c181-605b-4ce6-a448-8b46d9752668",
+        "role": "assistant",
+        "content": "- **Patient:** Priya Bose (P002)\n- **Diagnosis:** Hypertension, Hypothyroidism\n- **Current medications:** Ramipril 5mg, Atenolol 25mg, Amlodipine 5mg, Vitamin D3 60000 IU weekly, Multivitamin 1 tablet, Omeprazole 20mg\n- **Abnormal labs/alerts:** Hemoglobin High (17.47g/dL), Hemoglobin Low (7.74g/dL), Creatinine Low (2.28mg/dL), TSH High (9.35mIU/L), TSH High (9.84mIU/L), TSH Low (2.44mIU/L) (+2 more)\n- **Last visit:** 21 Jun 2024 · Dr. Mukherjee · Routine check-up. Patient mentions shortness of breath. Continue current therapy.\n- **Next steps:** Repeat key labs and schedule follow-up review.\n- **Action plan:** Review adherence, reassess trends, and escalate specialist referral if worsening continues.\n- **Safety:** Urgent review if red-flag symptoms or critical values appear.\n- **Note:** Groq rate limit reached (22m47.712s). Returned from local fallback.",
+        "timestamp": "2026-03-10T09:50:12.177Z"
+      },
+      {
+        "id": "cda1d87b-d42b-4e4b-9b29-37a4597e1b18",
+        "role": "user",
+        "content": "give me a small summary of priya",
+        "timestamp": "2026-03-10T09:52:03.520Z"
+      },
+      {
+        "id": "696be3e5-3820-4160-a2aa-6fcce7babc84",
+        "role": "assistant",
+        "content": "- **Patient:** Priya Bose (P002)\n- **Diagnosis:** Hypertension, Hypothyroidism\n- **Current medications:** Ramipril 5mg, Atenolol 25mg, Amlodipine 5mg, Vitamin D3 60000 IU weekly (+2 more)\n- **Abnormal labs/alerts:** Hemoglobin High (17.47g/dL), Hemoglobin Low (7.74g/dL), Creatinine Low (2.28mg/dL) (+5 more)\n- **Last visit:** 21 Jun 2024 · Dr. Mukherjee · Routine check-up. Patient mentions shortness of breath. Continue current therapy.\n- **Next steps:** Repeat key labs and schedule follow-up review.",
+        "timestamp": "2026-03-10T09:52:05.683Z"
+      },
+      {
+        "id": "7d5736b4-5188-483d-8b0e-f074b44c3915",
+        "role": "user",
+        "content": "Generate a detailed consultation brief for Vikram Singh",
+        "timestamp": "2026-03-10T11:17:06.451Z"
+      },
+      {
+        "id": "b2e801c5-5038-48f1-b69b-2b685818f81d",
+        "role": "assistant",
+        "content": "* **Key Issue:** Uncontrolled hypertension with recent readings of 168.32mmHg and 172.62mmHg, requiring adjustment of antihypertensive medications.\n* **Medication Review:** Current medications include Furosemide 40mg, Calcium Carbonate 500mg, Sodium Bicarbonate 650mg, Hydrochlorothiazide 12.5mg, Losartan 50mg, Ramipril 5mg, Metformin 500mg, Insulin Glargine 10 units, and Glipizide 5mg, with a need to reassess the efficacy of these medications in managing the patient's conditions.\n* **Abnormal Labs/Alerts:** Elevated blood pressure, high total cholesterol (278.74mg/dL and 283.56mg/dL), and high fasting glucose (249.85mg/dL) require immediate attention and potential adjustments to the treatment plan.\n* **Sodium Levels:** Recent sodium levels show fluctuations, with readings of 138.68mEq/L, 126.45mEq/L, 132.76mEq/L, and 127.78mEq/L, indicating a need for close monitoring to prevent hyponatremia or hypernatremia.\n* **Kidney Function:** Creatinine levels are within normal limits (0.84mg/dL, 0.97mg/dL), but the patient's eGFR is high (100.91mL/min/1.73m²), which may indicate a need for further evaluation of kidney function.\n* **Next Steps:** Schedule a follow-up appointment to reassess blood pressure, adjust antihypertensive medications as needed, and monitor kidney function, sodium levels, and glucose control.\n* **Lifestyle Modifications:** Counsel the patient on the importance of adhering to a low-sodium diet, increasing physical activity, and maintaining a healthy weight to manage hypertension, diabetes, and chronic kidney disease.\n* **Medication Adherence:** Emphasize the importance of taking medications as prescribed and encourage the patient to report any changes in symptoms or side effects to the healthcare team.\n* **Additional Testing:** Consider ordering additional labs, such as lipid profiles and urine protein tests, to further evaluate the patient's cardiovascular risk and kidney function.",
+        "timestamp": "2026-03-10T11:17:10.053Z"
+      }
+    ]
+  }
+]

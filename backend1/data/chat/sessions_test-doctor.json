@@ -1,0 +1,17 @@
+[
+  {
+    "id": "s1",
+    "title": "New Chat",
+    "selectedPatientId": "P001",
+    "createdAt": "2026-03-10T00:00:00.000Z",
+    "updatedAt": "2026-03-10T00:00:00.000Z",
+    "messages": [
+      {
+        "id": "m1",
+        "role": "user",
+        "content": "hi",
+        "timestamp": "2026-03-10T00:00:00.000Z"
+      }
+    ]
+  }
+]
