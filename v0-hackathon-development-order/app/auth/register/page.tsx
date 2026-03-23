@@ -4,9 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BriefcaseMedical, Lock, Mail, Stethoscope, User, ArrowRight, CheckCircle2 } from "lucide-react";
-
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, "") || "http://localhost:4000";
+import { registerUser } from "@/lib/backend-api";
 
 export default function DoctorRegisterPage() {
   const router = useRouter();
@@ -30,15 +28,17 @@ export default function DoctorRegisterPage() {
     if (password !== confirmPassword) { setError("Passwords do not match"); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "doctor", name, email, password, department, specialty: department }),
+      const data = await registerUser({
+        role: "doctor",
+        name,
+        email,
+        password,
+        department,
+        specialisation: department,
+        specialty: department,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Registration failed");
       localStorage.setItem("medai_user", JSON.stringify(data.user));
-      localStorage.setItem("medai_role", "doctor");
+      localStorage.setItem("medai_role", data.role);
       document.cookie = "medai_auth=1; path=/; max-age=2592000; samesite=lax";
       router.push("/dashboard");
     } catch (err) {

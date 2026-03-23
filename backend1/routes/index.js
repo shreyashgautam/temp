@@ -21,8 +21,6 @@ const { runTransferAgent } = require('../agents/transferAgent');
 const { runRagPatientSummary, runRagDoctorQuery } = require('../agents/ragDoctorAgent');
 const { getAllPatientsLiteFromMongo } = require('../rag/patientContext');
 const blockchain = require('../blockchain/logger');
-const USERS_FILE = path.join(__dirname, '../data/users.json');
-const users = require('../data/users.json');
 
 const UPLOAD_DIR = process.env.VERCEL
   ? '/tmp'
@@ -66,6 +64,204 @@ function readChatSessionsFromFile(actorId) {
 function writeChatSessionsToFile(actorId, sessions) {
   const file = chatSessionsFile(actorId);
   fs.writeFileSync(file, JSON.stringify(sessions, null, 2), 'utf8');
+}
+
+function normalizeChatSessionsPayload(sessions) {
+  if (!Array.isArray(sessions)) return [];
+
+  return sessions
+    .slice(0, 50)
+    .map((s) => ({
+      id: String(s?.id || ''),
+      title: String(s?.title || 'Chat').slice(0, 120),
+      selectedPatientId: String(s?.selectedPatientId || ''),
+      createdAt: String(s?.createdAt || new Date().toISOString()),
+      updatedAt: String(s?.updatedAt || new Date().toISOString()),
+      messages: Array.isArray(s?.messages)
+        ? s.messages.slice(-200).map((m) => ({
+            id: String(m?.id || ''),
+            role: m?.role === 'assistant' ? 'assistant' : 'user',
+            content: String(m?.content || '').slice(0, 20000),
+            timestamp: String(m?.timestamp || new Date().toISOString()),
+          }))
+        : [],
+    }))
+    .filter((s) => s.id);
+}
+
+function normalizeActorLookupValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function actorMatchesUser(user, actorId) {
+  const target = normalizeActorLookupValue(actorId);
+  if (!target) return false;
+
+  const candidates = [
+    user?.id,
+    user?.doctor_id,
+    user?.patient_id,
+    user?.email,
+    user?.name,
+  ]
+    .map(normalizeActorLookupValue)
+    .filter(Boolean);
+
+  return candidates.includes(target);
+}
+
+async function resolveChatActor(db, actorId) {
+  const authStore = await getAuthLists(db);
+  const normalizedActorId = safeActorId(actorId);
+
+  const doctor = authStore.doctors.find((entry) => actorMatchesUser(entry, actorId));
+  if (doctor) {
+    const doctorId = safeActorId(doctor.doctor_id || doctor.id || actorId);
+    return {
+      actorId: doctorId,
+      actorRole: 'doctor',
+      user: doctor,
+      displayName: doctor.name || doctor.email || doctorId,
+      email: doctor.email || null,
+    };
+  }
+
+  const patient = authStore.patients.find((entry) => actorMatchesUser(entry, actorId));
+  if (patient) {
+    const patientId = safeActorId(patient.patient_id || patient.id || actorId);
+    return {
+      actorId: patientId,
+      actorRole: 'patient',
+      user: patient,
+      displayName: patient.name || patient.email || patientId,
+      email: patient.email || null,
+    };
+  }
+
+  return {
+    actorId: normalizedActorId,
+    actorRole: 'unknown',
+    user: null,
+    displayName: normalizedActorId,
+    email: null,
+  };
+}
+
+function toMongoChatSession(owner, session) {
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const actorSpecific = owner.actorRole === 'doctor'
+    ? { doctor_id: owner.actorId }
+    : owner.actorRole === 'patient'
+    ? { patient_id: owner.actorId }
+    : {};
+
+  return {
+    actor_id: owner.actorId,
+    actor_role: owner.actorRole,
+    actor_name: owner.displayName,
+    actor_email: owner.email,
+    session_id: session.id,
+    title: session.title,
+    selected_patient_id: session.selectedPatientId || '',
+    messages,
+    message_count: messages.length,
+    last_message_at: lastMessage?.timestamp || session.updatedAt,
+    created_at: session.createdAt,
+    updated_at: session.updatedAt,
+    ...actorSpecific,
+  };
+}
+
+function fromMongoChatSession(doc) {
+  return {
+    id: String(doc?.session_id || ''),
+    title: String(doc?.title || 'Chat'),
+    selectedPatientId: String(doc?.selected_patient_id || ''),
+    createdAt: String(doc?.created_at || new Date().toISOString()),
+    updatedAt: String(doc?.updated_at || new Date().toISOString()),
+    messages: Array.isArray(doc?.messages)
+      ? doc.messages.map((m) => ({
+          id: String(m?.id || ''),
+          role: m?.role === 'assistant' ? 'assistant' : 'user',
+          content: String(m?.content || ''),
+          timestamp: String(m?.timestamp || new Date().toISOString()),
+        }))
+      : [],
+  };
+}
+
+async function loadChatSessionsFromMongo(actorId) {
+  return withMongoDb(async (db) => {
+    const owner = await resolveChatActor(db, actorId);
+    const collection = db.collection(process.env.CHAT_SESSIONS_COLLECTION || 'chat_sessions');
+
+    const docs = await collection
+      .find({ actor_id: owner.actorId })
+      .sort({ updated_at: -1, created_at: -1 })
+      .toArray();
+
+    if (docs.length > 0) {
+      return {
+        actorId: owner.actorId,
+        actorRole: owner.actorRole,
+        sessions: docs.map(fromMongoChatSession).filter((session) => session.id),
+      };
+    }
+
+    const fileSessions = readChatSessionsFromFile(actorId);
+    const normalizedFileSessions = normalizeChatSessionsPayload(fileSessions);
+    if (normalizedFileSessions.length > 0) {
+      const mongoDocs = normalizedFileSessions.map((session) => toMongoChatSession(owner, session));
+      await collection.insertMany(mongoDocs, { ordered: true });
+      return {
+        actorId: owner.actorId,
+        actorRole: owner.actorRole,
+        sessions: normalizedFileSessions,
+        migratedFromFile: true,
+      };
+    }
+
+    return { actorId: owner.actorId, actorRole: owner.actorRole, sessions: [] };
+  });
+}
+
+async function saveChatSessionsToMongo(actorId, sessions) {
+  const normalizedSessions = normalizeChatSessionsPayload(sessions);
+
+  return withMongoDb(async (db) => {
+    const owner = await resolveChatActor(db, actorId);
+    const collection = db.collection(process.env.CHAT_SESSIONS_COLLECTION || 'chat_sessions');
+    const docs = normalizedSessions.map((session) => toMongoChatSession(owner, session));
+    const sessionIds = docs.map((doc) => doc.session_id);
+
+    if (sessionIds.length === 0) {
+      await collection.deleteMany({ actor_id: owner.actorId });
+      return { actorId: owner.actorId, actorRole: owner.actorRole, saved: true, count: 0 };
+    }
+
+    await Promise.all(
+      docs.map((doc) =>
+        collection.updateOne(
+          { actor_id: owner.actorId, session_id: doc.session_id },
+          { $set: doc },
+          { upsert: true }
+        )
+      )
+    );
+
+    await collection.deleteMany({
+      actor_id: owner.actorId,
+      session_id: { $nin: sessionIds },
+    });
+
+    return {
+      actorId: owner.actorId,
+      actorRole: owner.actorRole,
+      saved: true,
+      count: docs.length,
+    };
+  });
 }
 
 function readJsonIfExists(baseDir, fileName) {
@@ -679,85 +875,316 @@ function buildBriefFromCase(patient, patientId) {
 function nextUserId(role, list) {
   const prefix = role === 'doctor' ? 'D' : 'P';
   const maxNum = list.reduce((max, item) => {
-    const id = String(item.id || '');
+    const id = String(item.id || item.doctor_id || item.patient_id || '');
     const num = Number(id.replace(/^[A-Z]/, ''));
     return Number.isFinite(num) ? Math.max(max, num) : max;
   }, 0);
   return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
 }
 
-router.post('/auth/login', (req, res) => {
-  const { email, password, role } = req.body;
-  const list = role === 'doctor' ? users.doctors : users.patients;
-  const user = list.find((u) => u.email === email && u.password === password);
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+function normalizeAuthRole(role) {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'doctor' || normalized === 'patient') return normalized;
+  return null;
+}
+
+function sanitizeAuthUser(user) {
+  if (!user || typeof user !== 'object') return null;
   const { password: _, ...safeUser } = user;
-  return res.json({ user: safeUser, role });
+  return safeUser;
+}
+
+async function withMongoDb(handler) {
+  if (!MongoClient) {
+    throw new Error('MongoDB driver is not installed. Add the "mongodb" package to backend1.');
+  }
+  if (!process.env.MONGO_URI) {
+    throw new Error('MONGO_URI is not configured');
+  }
+
+  const client = new MongoClient(process.env.MONGO_URI);
+  try {
+    await client.connect();
+    const dbName = String(process.env.MONGO_DB_NAME || '').trim();
+    const db = dbName ? client.db(dbName) : client.db();
+    return await handler(db);
+  } finally {
+    await client.close();
+  }
+}
+
+async function findArrayAuthStore(db) {
+  const preferredCollections = [
+    String(process.env.MONGO_AUTH_COLLECTION || '').trim(),
+    'users',
+    'auth',
+    'user_auth',
+  ].filter(Boolean);
+
+  const seen = new Set();
+  const collectionNames = [];
+  for (const name of preferredCollections) {
+    if (!seen.has(name)) {
+      seen.add(name);
+      collectionNames.push(name);
+    }
+  }
+
+  const existingCollections = await db.listCollections({}, { nameOnly: true }).toArray();
+  for (const { name } of existingCollections) {
+    if (!seen.has(name)) {
+      seen.add(name);
+      collectionNames.push(name);
+    }
+  }
+
+  for (const collectionName of collectionNames) {
+    const collection = db.collection(collectionName);
+    const document = await collection.findOne({
+      $or: [{ doctors: { $exists: true } }, { patients: { $exists: true } }],
+    });
+    if (document) {
+      return { collection, document };
+    }
+  }
+
+  return null;
+}
+
+async function getAuthLists(db) {
+  const arrayStore = await findArrayAuthStore(db);
+  if (arrayStore) {
+    const { collection, document } = arrayStore;
+    return {
+      mode: 'document',
+      collection,
+      document,
+      doctors: Array.isArray(document.doctors) ? document.doctors : [],
+      patients: Array.isArray(document.patients) ? document.patients : [],
+    };
+  }
+
+  const existingCollections = await db.listCollections({}, { nameOnly: true }).toArray();
+  const collectionNames = new Set(existingCollections.map((entry) => entry.name));
+  const doctorsCollection = db.collection('doctors');
+  const patientsCollection = db.collection('patients');
+  const hasDoctorsCollection = collectionNames.has('doctors');
+  const hasPatientsCollection = collectionNames.has('patients');
+
+  if (hasDoctorsCollection || hasPatientsCollection) {
+    const [doctors, patients] = await Promise.all([
+      hasDoctorsCollection ? doctorsCollection.find({ email: { $exists: true }, password: { $exists: true } }).toArray() : [],
+      hasPatientsCollection ? patientsCollection.find({ email: { $exists: true }, password: { $exists: true } }).toArray() : [],
+    ]);
+
+    return {
+      mode: 'collections',
+      doctorsCollection,
+      patientsCollection,
+      doctors,
+      patients,
+    };
+  }
+
+  const collection = db.collection(String(process.env.MONGO_AUTH_COLLECTION || '').trim() || 'users');
+  const baseDocument = { doctors: [], patients: [] };
+  const insertResult = await collection.insertOne(baseDocument);
+  return {
+    mode: 'document',
+    collection,
+    document: { ...baseDocument, _id: insertResult.insertedId },
+    doctors: [],
+    patients: [],
+  };
+}
+
+function splitNameParts(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
+function formatAuthUser(role, user) {
+  const safeUser = sanitizeAuthUser(user);
+  if (!safeUser) return null;
+
+  const normalizedId =
+    safeUser.id ||
+    safeUser.doctor_id ||
+    safeUser.patient_id ||
+    null;
+  const specialty =
+    safeUser.specialty ||
+    safeUser.specialisation ||
+    safeUser.specialization ||
+    safeUser.department ||
+    '';
+
+  return {
+    ...safeUser,
+    id: normalizedId,
+    role,
+    specialty,
+    specialisation: safeUser.specialisation || specialty,
+    specialization: safeUser.specialization || specialty,
+    department: safeUser.department || specialty || (role === 'doctor' ? 'General Medicine' : ''),
+  };
+}
+
+function buildRegisteredUser(role, payload, existingUsers) {
+  const normalizedEmail = String(payload.email || '').trim().toLowerCase();
+  const normalizedName = String(payload.name || '').trim();
+  const normalizedPassword = String(payload.password || '');
+  const id = nextUserId(role, existingUsers);
+  const phone = String(payload.phone || '').trim();
+  const { firstName, lastName } = splitNameParts(normalizedName.replace(/^Dr\.?\s*/i, ''));
+
+  if (role === 'doctor') {
+    const specialization = String(
+      payload.specialization || payload.specialisation || payload.specialty || payload.department || ''
+    ).trim();
+
+    return {
+      doctor_id: id,
+      name: normalizedName,
+      first_name: firstName || normalizedName,
+      last_name: lastName,
+      email: normalizedEmail,
+      password: normalizedPassword,
+      specialization: specialization || 'General Medicine',
+      department: specialization || 'General Medicine',
+      specialisation: specialization || 'General Medicine',
+      specialty: specialization || 'General Medicine',
+      active: true,
+      ...(phone ? { phone } : {}),
+    };
+  }
+
+  return {
+    patient_id: id,
+    name: normalizedName,
+    first_name: firstName || normalizedName,
+    last_name: lastName,
+    email: normalizedEmail,
+    password: normalizedPassword,
+    active: true,
+    ...(phone ? { phone } : {}),
+  };
+}
+
+router.post('/auth/login', async (req, res) => {
+  try {
+    const role = normalizeAuthRole(req.body?.role);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!role || !email || !password) {
+      return res.status(400).json({ error: 'role, email and password are required' });
+    }
+
+    const result = await withMongoDb(async (db) => {
+      const authStore = await getAuthLists(db);
+      const list = role === 'doctor' ? authStore.doctors : authStore.patients;
+      const user = list.find(
+        (entry) =>
+          String(entry?.email || '').trim().toLowerCase() === email &&
+          String(entry?.password || '') === password
+      );
+
+      if (!user) return null;
+      return formatAuthUser(role, user);
+    });
+
+    if (!result) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    return res.json({ user: result, role });
+  } catch (e) {
+    return res.status(500).json({ error: `Failed to login: ${e.message}` });
+  }
 });
 
-router.post('/auth/register', (req, res) => {
-  const { role, email, password, name } = req.body || {};
-  if (!role || !email || !password || !name) {
-    return res.status(400).json({ error: 'role, name, email and password are required' });
-  }
-  if (!['doctor', 'patient'].includes(role)) {
-    return res.status(400).json({ error: 'role must be doctor or patient' });
-  }
+router.post('/auth/register', async (req, res) => {
+  try {
+    const role = normalizeAuthRole(req.body?.role);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const name = String(req.body?.name || '').trim();
 
-  const key = role === 'doctor' ? 'doctors' : 'patients';
-  const list = users[key];
-  const existing = list.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
-  if (existing) {
-    return res.status(409).json({ error: 'Email already registered' });
+    if (!role || !email || !password || !name) {
+      return res.status(400).json({ error: 'role, name, email and password are required' });
+    }
+
+    const user = await withMongoDb(async (db) => {
+      const authStore = await getAuthLists(db);
+      const duplicate = [...authStore.doctors, ...authStore.patients].find(
+        (entry) => String(entry?.email || '').trim().toLowerCase() === email
+      );
+      if (duplicate) {
+        const err = new Error('Email already registered');
+        err.statusCode = 409;
+        throw err;
+      }
+
+      const currentList = role === 'doctor' ? authStore.doctors : authStore.patients;
+      const newUser = buildRegisteredUser(role, req.body || {}, currentList);
+
+      if (authStore.mode === 'document') {
+        const key = role === 'doctor' ? 'doctors' : 'patients';
+        await authStore.collection.updateOne(
+          { _id: authStore.document._id },
+          { $set: { [key]: [...currentList, newUser] } }
+        );
+      } else {
+        const collection = role === 'doctor' ? authStore.doctorsCollection : authStore.patientsCollection;
+        await collection.insertOne(newUser);
+      }
+
+      return formatAuthUser(role, newUser);
+    });
+
+    return res.status(201).json({ user, role });
+  } catch (e) {
+    const statusCode = Number(e.statusCode) || 500;
+    return res.status(statusCode).json({ error: statusCode === 500 ? `Failed to register: ${e.message}` : e.message });
   }
-
-  const id = nextUserId(role, list);
-  const user = { id, name, email, password };
-  list.push(user);
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
-
-  const { password: _, ...safeUser } = user;
-  return res.status(201).json({ user: safeUser, role });
 });
 
-router.get('/chat/sessions', (req, res) => {
+router.get('/chat/sessions', async (req, res) => {
   const actorId = req.query?.actorId || req.headers['x-actor-id'] || 'anonymous';
-  const sessions = readChatSessionsFromFile(actorId);
-  return res.json({ actorId: safeActorId(actorId), sessions });
+  try {
+    const result = await loadChatSessionsFromMongo(actorId);
+    return res.json(result);
+  } catch (e) {
+    const sessions = readChatSessionsFromFile(actorId);
+    return res.json({ actorId: safeActorId(actorId), actorRole: 'unknown', sessions, fallback: 'file', error: e.message });
+  }
 });
 
-router.put('/chat/sessions', (req, res) => {
+router.put('/chat/sessions', async (req, res) => {
   const actorId = req.query?.actorId || req.headers['x-actor-id'] || 'anonymous';
   const sessions = req.body?.sessions;
   if (!Array.isArray(sessions)) {
     return res.status(400).json({ error: 'sessions array required' });
   }
 
-  // Keep payload bounded to avoid runaway local files.
-  const bounded = sessions
-    .slice(0, 50)
-    .map((s) => ({
-      id: String(s?.id || ''),
-      title: String(s?.title || 'Chat').slice(0, 120),
-      selectedPatientId: String(s?.selectedPatientId || ''),
-      createdAt: String(s?.createdAt || new Date().toISOString()),
-      updatedAt: String(s?.updatedAt || new Date().toISOString()),
-      messages: Array.isArray(s?.messages)
-        ? s.messages.slice(-200).map((m) => ({
-            id: String(m?.id || ''),
-            role: m?.role === 'assistant' ? 'assistant' : 'user',
-            content: String(m?.content || '').slice(0, 20000),
-            timestamp: String(m?.timestamp || new Date().toISOString()),
-          }))
-        : [],
-    }))
-    .filter((s) => s.id);
+  const bounded = normalizeChatSessionsPayload(sessions);
 
   try {
-    writeChatSessionsToFile(actorId, bounded);
-    return res.json({ actorId: safeActorId(actorId), saved: true, count: bounded.length });
+    const result = await saveChatSessionsToMongo(actorId, bounded);
+    return res.json(result);
   } catch (e) {
-    return res.status(500).json({ error: `Failed to save sessions: ${e.message}` });
+    try {
+      writeChatSessionsToFile(actorId, bounded);
+      return res.json({ actorId: safeActorId(actorId), actorRole: 'unknown', saved: true, count: bounded.length, fallback: 'file' });
+    } catch (fileError) {
+      return res.status(500).json({ error: `Failed to save sessions: ${e.message || fileError.message}` });
+    }
   }
 });
 

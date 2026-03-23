@@ -2,7 +2,9 @@ const { LocalIndex } = require('vectra');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 
-const INDEX_PATH = path.join(__dirname, '../data/vectra_index');
+const INDEX_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'vectra_index')
+  : path.join(__dirname, '../data/vectra_index');
 let index = null;
 const indexedPatientIds = new Set();
 

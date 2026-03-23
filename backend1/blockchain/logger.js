@@ -3,22 +3,27 @@ const crypto = require('crypto');
 let chain = [];
 let io = null;
 
-function init(socketIo) {
-  io = socketIo;
-  // Genesis block
+function ensureGenesisBlock() {
+  if (chain.length > 0) return;
   chain.push({
     index: 0,
     timestamp: new Date().toISOString(),
     action: 'CHAIN_INITIALIZED',
     actorId: 'SYSTEM',
     patientId: null,
-    details: 'Kathir Memorial Hospital — Patient Intelligence Blockchain Audit Ledger initialized',
+    details: 'Kathir Memorial Hospital - Patient Intelligence Blockchain Audit Ledger initialized',
     previousHash: '0000000000000000',
     hash: crypto.createHash('sha256').update('genesis').digest('hex')
   });
 }
 
+function init(socketIo) {
+  io = socketIo;
+  ensureGenesisBlock();
+}
+
 function addBlock(action, actorId, patientId, details) {
+  ensureGenesisBlock();
   const prevHash = chain[chain.length - 1].hash;
   const blockData = {
     index: chain.length,
@@ -36,10 +41,12 @@ function addBlock(action, actorId, patientId, details) {
 }
 
 function getChain() {
+  ensureGenesisBlock();
   return chain;
 }
 
 function verifyChain() {
+  ensureGenesisBlock();
   for (let i = 1; i < chain.length; i++) {
     const block = chain[i];
     const { hash, ...rest } = block;
@@ -51,6 +58,7 @@ function verifyChain() {
 }
 
 function exportCSV() {
+  ensureGenesisBlock();
   const header = 'Index,Timestamp,Action,Actor,PatientID,Details,Hash\n';
   const rows = chain.map(b =>
     `${b.index},"${b.timestamp}","${b.action}","${b.actorId}","${b.patientId || ''}","${b.details}","${b.hash.substring(0, 16)}..."`

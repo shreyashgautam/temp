@@ -11,7 +11,7 @@ function isPublicPath(pathname: string) {
   );
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isLoggedIn = req.cookies.get("medai_auth")?.value === "1";
 

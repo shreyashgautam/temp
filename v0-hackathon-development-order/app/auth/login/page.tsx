@@ -4,9 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, Stethoscope, ArrowRight } from "lucide-react";
-
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, "") || "http://localhost:4000";
+import { loginUser } from "@/lib/backend-api";
 
 export default function DoctorLoginPage() {
   const router = useRouter();
@@ -26,15 +24,9 @@ export default function DoctorLoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role: "doctor" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Login failed");
+      const data = await loginUser({ email, password, role: "doctor" });
       localStorage.setItem("medai_user", JSON.stringify(data.user));
-      localStorage.setItem("medai_role", "doctor");
+      localStorage.setItem("medai_role", data.role);
       document.cookie = "medai_auth=1; path=/; max-age=2592000; samesite=lax";
       router.push("/dashboard");
     } catch (err) {

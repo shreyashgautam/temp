@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import jsPDF from "jspdf";
 import { fetchApi } from "@/lib/backend-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +28,7 @@ import {
   Share2,
   ShieldAlert,
   HeartPulse,
+  Download,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 
@@ -89,11 +91,11 @@ const statusConfig = {
 };
 
 const bodyRegionPosition: Record<BodyRegion, { top: string; left: string; label: string }> = {
-  head: { top: "10%", left: "50%", label: "Head" },
-  chest: { top: "34%", left: "50%", label: "Chest" },
-  heart: { top: "36%", left: "48%", label: "Heart" },
-  abdomen: { top: "49%", left: "50%", label: "Abdomen" },
-  kidney: { top: "49%", left: "50%", label: "Kidney" },
+  head: { top: "13%", left: "50%", label: "Head" },
+  chest: { top: "32%", left: "50%", label: "Chest" },
+  heart: { top: "33%", left: "49%", label: "Heart" },
+  abdomen: { top: "47%", left: "50%", label: "Abdomen" },
+  kidney: { top: "45%", left: "50%", label: "Kidney" },
   legs: { top: "78%", left: "50%", label: "Legs" },
 };
 
@@ -137,6 +139,21 @@ function isDepartmentMatch(loggedDept: string, visitDept: string) {
   return a.some((x) => b.some((y) => x.includes(y) || y.includes(x)));
 }
 
+function formatDisplayDate(value?: string | null) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatFileDate(value = new Date()) {
+  return value.toISOString().slice(0, 10);
+}
+
 export default function PatientDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -152,6 +169,7 @@ export default function PatientDetailPage() {
   const [loggedDoctorName, setLoggedDoctorName] = useState("");
   const [loggedDoctorDept, setLoggedDoctorDept] = useState("");
   const [loading, setLoading] = useState(true);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -217,9 +235,9 @@ export default function PatientDetailPage() {
     try {
       const raw = localStorage.getItem("medai_user");
       if (!raw) return;
-      const user = JSON.parse(raw) as { name?: string; specialty?: string; department?: string };
+      const user = JSON.parse(raw) as { name?: string; specialty?: string; specialization?: string; specialisation?: string; department?: string };
       setLoggedDoctorName(user.name || "");
-      setLoggedDoctorDept(user.specialty || user.department || "");
+      setLoggedDoctorDept(user.specialty || user.specialization || user.specialisation || user.department || "");
     } catch {
       // ignore malformed local user payload
     }
@@ -265,6 +283,205 @@ export default function PatientDetailPage() {
       .filter((v) => isDepartmentMatch(loggedDoctorDept, String(v.department || "")))
       .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   }, [visits, loggedDoctorDept]);
+
+  const handleDownloadReport = async () => {
+    if (!patient) return;
+    setDownloadingReport(true);
+
+    try {
+      const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 14;
+      const contentWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      const ensureSpace = (requiredHeight: number) => {
+        if (y + requiredHeight <= pageHeight - margin) return;
+        doc.addPage();
+        y = margin;
+      };
+
+      const drawSectionTitle = (title: string, subtitle?: string) => {
+        ensureSpace(18);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(margin, y, contentWidth, 12, 3, 3, "F");
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, y, contentWidth, 12, 3, 3, "S");
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(13);
+        doc.text(title, margin + 4, y + 7);
+        if (subtitle) {
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(100, 116, 139);
+          doc.setFontSize(9.5);
+          doc.text(subtitle, margin + 4, y + 11);
+        }
+        y += 16;
+      };
+
+      const drawParagraph = (text: string, options?: { size?: number; color?: [number, number, number]; gap?: number }) => {
+        const fontSize = options?.size || 10.5;
+        const color = options?.color || [51, 65, 85];
+        const gap = options?.gap ?? 5;
+        const lines = doc.splitTextToSize(text || "—", contentWidth);
+        ensureSpace(lines.length * gap + 2);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(fontSize);
+        doc.setTextColor(color[0], color[1], color[2]);
+        doc.text(lines, margin, y);
+        y += lines.length * gap + 1.5;
+      };
+
+      const drawBulletList = (items: string[], emptyText: string) => {
+        const safeItems = items.length ? items : [emptyText];
+        safeItems.forEach((item) => {
+          const lines = doc.splitTextToSize(item, contentWidth - 8);
+          ensureSpace(lines.length * 5 + 2);
+          doc.setFillColor(15, 23, 42);
+          doc.circle(margin + 2, y - 1.1, 0.8, "F");
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10.2);
+          doc.setTextColor(51, 65, 85);
+          doc.text(lines, margin + 6, y);
+          y += lines.length * 5 + 0.8;
+        });
+        y += 1;
+      };
+
+      const drawKeyValueGrid = (rows: Array<{ label: string; value: string }>) => {
+        const colGap = 6;
+        const colWidth = (contentWidth - colGap) / 2;
+        for (let i = 0; i < rows.length; i += 2) {
+          const pair = rows.slice(i, i + 2);
+          const heights = pair.map((row) => {
+            const valueLines = doc.splitTextToSize(row.value || "—", colWidth - 8);
+            return 11 + valueLines.length * 4.5;
+          });
+          const boxHeight = Math.max(...heights, 18);
+          ensureSpace(boxHeight + 3);
+
+          pair.forEach((row, idx) => {
+            const x = margin + idx * (colWidth + colGap);
+            const valueLines = doc.splitTextToSize(row.value || "—", colWidth - 8);
+            doc.setFillColor(255, 255, 255);
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(x, y, colWidth, boxHeight, 3, 3, "FD");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(row.label.toUpperCase(), x + 4, y + 5.2);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10.2);
+            doc.setTextColor(15, 23, 42);
+            doc.text(valueLines, x + 4, y + 10.5);
+          });
+
+          y += boxHeight + 4;
+        }
+      };
+
+      const fullSummary = [
+        `${patient.name} is a ${patient.age}-year-old ${String(patient.gender || "patient").toLowerCase()} with ${diagnosis.join(", ") || "no listed diagnosis"}.`,
+        brief?.lastVisitSummary?.clinicalNote || visits[visits.length - 1]?.clinicalNote || "No recent clinical note on file.",
+        overdueTests.length ? `Recommended follow-up: ${overdueTests.map((test) => `${test.test || "Test"} (${test.reason || "Follow-up"})`).join(", ")}.` : "No overdue tests listed at the moment.",
+      ].join(" ");
+
+      doc.setFillColor(15, 23, 42);
+      doc.roundedRect(margin, y, contentWidth, 30, 5, 5, "F");
+      doc.setFillColor(0, 180, 216);
+      doc.circle(pageWidth - margin - 14, y + 10, 7, "F");
+      doc.setFillColor(255, 255, 255);
+      doc.circle(pageWidth - margin - 14, y + 10, 3.3, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(19);
+      doc.setTextColor(248, 250, 252);
+      doc.text("Patient Clinical Report", margin + 5, y + 10);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(191, 219, 254);
+      doc.text(`Generated on ${formatDisplayDate(new Date().toISOString())}`, margin + 5, y + 17);
+      doc.text(`Doctor view · ${loggedDoctorName || "MedAI Pro"}`, margin + 5, y + 22.5);
+      y += 36;
+
+      drawKeyValueGrid([
+        { label: "Patient", value: patient.name },
+        { label: "Patient ID", value: patient.id },
+        { label: "Age / Gender", value: `${patient.age} years · ${patient.gender}` },
+        { label: "Status", value: status.label },
+        { label: "Last Visit", value: formatDisplayDate(patient.lastVisit || visits[visits.length - 1]?.date) },
+        { label: "Primary Department", value: loggedDoctorDept || "General Medicine" },
+      ]);
+
+      drawSectionTitle("Executive Summary", "High-level snapshot prepared for download");
+      drawParagraph(fullSummary);
+
+      drawSectionTitle("Diagnosis & Risk Flags");
+      drawBulletList(
+        [
+          ...diagnosis.map((item) => `Diagnosis: ${item}`),
+          ...flags.slice(0, 6).map((flag) => `${normalizeStatus(flag.type) === "critical" ? "Critical" : "Clinical"} flag: ${flag.flag}${flag.date ? ` (${formatDisplayDate(flag.date)})` : ""}`),
+        ],
+        "No diagnoses or active flags available."
+      );
+
+      drawSectionTitle("Medication Snapshot");
+      drawBulletList(
+        meds.slice(0, 10).map((med) => `${med.name} · ${med.dose} · ${med.frequency}${med.since ? ` · since ${formatDisplayDate(med.since)}` : ""}`),
+        "No medications recorded."
+      );
+
+      drawSectionTitle("Lab Highlights");
+      const labHighlights = Object.entries(labTrends)
+        .slice(0, 8)
+        .map(([test, trend]) => {
+          const latest = trend.data?.[trend.data.length - 1];
+          const readings = trend.data?.length || 0;
+          return `${test}: ${latest ? `${latest.value}${latest.unit ? ` ${latest.unit}` : ""}` : "No latest value"} · ${trend.trend.toLowerCase().replace(/_/g, " ")} · ${readings} readings`;
+        });
+      drawBulletList(labHighlights, "No lab highlights available.");
+
+      drawSectionTitle("Recent Visits");
+      drawBulletList(
+        visits
+          .slice()
+          .reverse()
+          .slice(0, 6)
+          .map((visit) => `${formatDisplayDate(visit.date)} · ${visit.doctor || "On File"} · ${visit.department || "General Medicine"} · ${visit.clinicalNote || visit.chiefComplaint || "No note"}`),
+        "No visit history available."
+      );
+
+      drawSectionTitle("AI Brief & Follow-up");
+      drawBulletList(
+        [
+          ...(ragSummaryPoints.slice(0, 5).map((point) => `AI insight: ${point}`)),
+          ...(overdueTests.slice(0, 5).map((test) => `Follow-up: ${test.test || "Recommended test"}${test.reason ? ` - ${test.reason}` : ""}`)),
+        ],
+        "No AI brief or follow-up items available."
+      );
+
+      ensureSpace(18);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        "Generated by ClinSight AI for clinician review only. Verify all recommendations against current clinical judgement.",
+        margin,
+        y
+      );
+
+      doc.save(`${patient.id}-${patient.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-clinical-report-${formatFileDate()}.pdf`);
+    } catch (error) {
+      console.error("Failed to generate patient report PDF", error);
+      window.alert("Unable to generate PDF report right now.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -336,6 +553,7 @@ export default function PatientDetailPage() {
           border-radius: 10px;
           background:
             radial-gradient(circle at 50% -10%, rgba(148,163,184,0.16), transparent 36%),
+            radial-gradient(circle at 50% 28%, rgba(59,130,246,0.06), transparent 22%),
             linear-gradient(180deg, #fcfcfd 0%, #f8fafc 100%);
           padding: 12px;
           overflow: hidden;
@@ -352,23 +570,42 @@ export default function PatientDetailPage() {
         }
         .body-dot {
           position: absolute;
-          width: 11px;
-          height: 11px;
+          width: 12px;
+          height: 12px;
           border-radius: 999px;
-          border: 2px solid white;
+          border: 2px solid rgba(255,255,255,0.95);
           cursor: pointer;
           transform: translate(-50%, -50%);
-          box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08);
+          box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.12);
           z-index: 3;
         }
         .body-dot::after {
           content: '';
           position: absolute;
-          inset: -7px;
+          inset: -8px;
           border-radius: 999px;
           border: 2px solid currentColor;
           opacity: 0.28;
           animation: bodyPulse 1.8s ease-out infinite;
+        }
+        .body-silhouette {
+          filter: drop-shadow(0 18px 28px rgba(148, 163, 184, 0.18));
+        }
+        .body-label {
+          position: absolute;
+          z-index: 4;
+          transform: translate(-50%, -170%);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          color: #334155;
+          background: rgba(255,255,255,0.92);
+          border: 1px solid rgba(203,213,225,0.95);
+          border-radius: 999px;
+          padding: 2px 7px;
+          box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+          pointer-events: none;
+          white-space: nowrap;
         }
         .body-tip { position: absolute; z-index: 20; min-width: 180px; max-width: 260px; background: #0f172a; color: #f8fafc; font-size: 11px; line-height: 1.4; padding: 8px 10px; border-radius: 8px; transform: translate(-50%, -110%); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25); pointer-events: none; }
         .body-loader {
@@ -443,7 +680,10 @@ export default function PatientDetailPage() {
               <button className="pd-action-btn"><Phone style={{ width: 14, height: 14 }} /> Call</button>
               <button className="pd-action-btn"><Mail style={{ width: 14, height: 14 }} /> Email</button>
               <button className="pd-action-btn"><Share2 style={{ width: 14, height: 14 }} /> Refer</button>
-              <button className="pd-action-btn primary"><FileText style={{ width: 14, height: 14 }} /> Generate Report</button>
+              <button className="pd-action-btn primary" onClick={handleDownloadReport} disabled={downloadingReport} style={{ opacity: downloadingReport ? 0.7 : 1 }}>
+                <Download style={{ width: 14, height: 14 }} />
+                {downloadingReport ? "Generating PDF..." : "Generate Report"}
+              </button>
             </div>
           </div>
 
@@ -787,19 +1027,42 @@ export default function PatientDetailPage() {
               </div>
 
               <div className="body-map" style={{ height: 300 }}>
-                <svg viewBox="0 0 180 300" width="100%" height="100%" aria-label="Body map" style={{ position: "relative", zIndex: 2 }}>
+                <svg viewBox="0 0 180 300" width="100%" height="100%" aria-label="Body map" style={{ position: "relative", zIndex: 2 }} className="body-silhouette">
                   <defs>
                     <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#dbe3ef" />
-                      <stop offset="100%" stopColor="#cfd9e7" />
+                      <stop offset="0%" stopColor="#d9e5f5" />
+                      <stop offset="100%" stopColor="#c8d7eb" />
+                    </linearGradient>
+                    <linearGradient id="boneGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f8fbff" />
+                      <stop offset="100%" stopColor="#dde8f6" />
                     </linearGradient>
                   </defs>
-                  <circle cx="90" cy="28" r="18" fill="url(#bodyGrad)" stroke="#b8c6d8" />
-                  <rect x="70" y="48" width="40" height="92" rx="18" fill="url(#bodyGrad)" stroke="#b8c6d8" />
-                  <rect x="48" y="58" width="18" height="76" rx="9" fill="url(#bodyGrad)" stroke="#b8c6d8" />
-                  <rect x="114" y="58" width="18" height="76" rx="9" fill="url(#bodyGrad)" stroke="#b8c6d8" />
-                  <rect x="74" y="140" width="15" height="122" rx="8" fill="url(#bodyGrad)" stroke="#b8c6d8" />
-                  <rect x="91" y="140" width="15" height="122" rx="8" fill="url(#bodyGrad)" stroke="#b8c6d8" />
+                  <circle cx="90" cy="28" r="16" fill="url(#bodyGrad)" stroke="#b5c6dd" strokeWidth="1.2" />
+                  <path d="M74 46 C78 42, 102 42, 106 46 L118 60 C123 66, 124 75, 118 82 L110 92 L110 135 C110 144, 104 150, 95 150 L85 150 C76 150, 70 144, 70 135 L70 92 L62 82 C56 75, 57 66, 62 60 Z" fill="url(#bodyGrad)" stroke="#b5c6dd" strokeWidth="1.2" />
+                  <rect x="45" y="60" width="16" height="84" rx="8" fill="url(#bodyGrad)" stroke="#b5c6dd" strokeWidth="1.1" />
+                  <rect x="119" y="60" width="16" height="84" rx="8" fill="url(#bodyGrad)" stroke="#b5c6dd" strokeWidth="1.1" />
+                  <rect x="74" y="150" width="15" height="114" rx="8" fill="url(#bodyGrad)" stroke="#b5c6dd" strokeWidth="1.1" />
+                  <rect x="91" y="150" width="15" height="114" rx="8" fill="url(#bodyGrad)" stroke="#b5c6dd" strokeWidth="1.1" />
+
+                  <path d="M90 48 L90 147" stroke="url(#boneGrad)" strokeWidth="4" strokeLinecap="round" opacity="0.95" />
+                  <path d="M74 68 C80 62, 100 62, 106 68" stroke="url(#boneGrad)" strokeWidth="2.5" fill="none" opacity="0.9" />
+                  <path d="M72 78 C79 72, 101 72, 108 78" stroke="url(#boneGrad)" strokeWidth="2.2" fill="none" opacity="0.88" />
+                  <path d="M71 88 C79 82, 101 82, 109 88" stroke="url(#boneGrad)" strokeWidth="2.1" fill="none" opacity="0.86" />
+                  <path d="M72 98 C80 92, 100 92, 108 98" stroke="url(#boneGrad)" strokeWidth="2" fill="none" opacity="0.82" />
+                  <path d="M74 108 C81 103, 99 103, 106 108" stroke="url(#boneGrad)" strokeWidth="1.8" fill="none" opacity="0.78" />
+                  <path d="M76 118 C82 114, 98 114, 104 118" stroke="url(#boneGrad)" strokeWidth="1.6" fill="none" opacity="0.72" />
+                  <circle cx="90" cy="46" r="5.6" fill="url(#boneGrad)" opacity="0.92" />
+                  <path d="M82 148 C84 155, 85 160, 82 165" stroke="url(#boneGrad)" strokeWidth="2.3" fill="none" opacity="0.88" />
+                  <path d="M98 148 C96 155, 95 160, 98 165" stroke="url(#boneGrad)" strokeWidth="2.3" fill="none" opacity="0.88" />
+                  <path d="M82 165 L82 258" stroke="url(#boneGrad)" strokeWidth="2.6" strokeLinecap="round" opacity="0.88" />
+                  <path d="M98 165 L98 258" stroke="url(#boneGrad)" strokeWidth="2.6" strokeLinecap="round" opacity="0.88" />
+                  <path d="M52 68 L52 136" stroke="url(#boneGrad)" strokeWidth="2.2" strokeLinecap="round" opacity="0.75" />
+                  <path d="M128 68 L128 136" stroke="url(#boneGrad)" strokeWidth="2.2" strokeLinecap="round" opacity="0.75" />
+
+                  <ellipse cx="82" cy="104" rx="10" ry="16" fill="rgba(255,255,255,0.16)" />
+                  <ellipse cx="98" cy="104" rx="10" ry="16" fill="rgba(255,255,255,0.16)" />
+                  <path d="M90 116 C86 110, 80 104, 80 97 C80 91, 84 87, 89 87 C92 87, 94 88, 96 91 C98 88, 100 87, 103 87 C108 87, 112 91, 112 97 C112 104, 106 110, 96 118 Z" fill="rgba(239,68,68,0.18)" />
                 </svg>
 
                 {bodyMapLoading && (
@@ -812,13 +1075,17 @@ export default function PatientDetailPage() {
                   const pos = bodyRegionPosition[dot.region];
                   const color = dot.type === "critical" ? "#ef4444" : dot.type === "monitoring" ? "#f59e0b" : "#94a3b8";
                   return (
-                    <div
-                      key={dot.id}
-                      className="body-dot"
-                      style={{ top: pos.top, left: pos.left, background: color, color }}
-                      onMouseEnter={() => setHoverDot({ id: dot.id, text: dot.text, region: dot.region })}
-                      onMouseLeave={() => setHoverDot((prev) => (prev?.id === dot.id ? null : prev))}
-                    />
+                    <div key={dot.id}>
+                      <div className="body-label" style={{ top: pos.top, left: pos.left }}>
+                        {pos.label}
+                      </div>
+                      <div
+                        className="body-dot"
+                        style={{ top: pos.top, left: pos.left, background: color, color }}
+                        onMouseEnter={() => setHoverDot({ id: dot.id, text: dot.text, region: dot.region })}
+                        onMouseLeave={() => setHoverDot((prev) => (prev?.id === dot.id ? null : prev))}
+                      />
+                    </div>
                   );
                 })}
 

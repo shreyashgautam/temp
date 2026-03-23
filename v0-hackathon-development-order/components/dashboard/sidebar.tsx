@@ -42,11 +42,13 @@ export function Sidebar() {
       const user = JSON.parse(raw) as {
         name?: string;
         specialty?: string;
+        specialization?: string;
+        specialisation?: string;
         department?: string;
       };
       if (user.name) setDoctorName(user.name.startsWith("Dr.") ? user.name : `Dr. ${user.name}`);
-      if (user.specialty || user.department) {
-        setDepartment(user.specialty || user.department || "General Medicine");
+      if (user.specialty || user.specialization || user.specialisation || user.department) {
+        setDepartment(user.specialty || user.specialization || user.specialisation || user.department || "General Medicine");
       }
     } catch {
       // Keep safe fallback labels when local storage payload is invalid.

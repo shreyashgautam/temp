@@ -96,9 +96,9 @@ export default function MedicationsPage() {
       try {
         const raw = localStorage.getItem("medai_user");
         if (raw) {
-          const u = JSON.parse(raw) as { name?: string; specialty?: string; department?: string };
+          const u = JSON.parse(raw) as { name?: string; specialty?: string; specialization?: string; specialisation?: string; department?: string };
           setDoctorName(String(u.name || ""));
-          setDoctorDept(String(u.specialty || u.department || ""));
+          setDoctorDept(String(u.specialty || u.specialization || u.specialisation || u.department || ""));
         }
       } catch {
         // ignore local storage parse errors
