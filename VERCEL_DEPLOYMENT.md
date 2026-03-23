@@ -98,6 +98,7 @@ NEXT_PUBLIC_BACKEND_URL=https://medai-backend.vercel.app
 
 - `next.config.mjs` already includes a Turbopack root setting to avoid multi-lockfile warnings in monorepo-style deployment.
 - The frontend expects the backend base URL from `NEXT_PUBLIC_BACKEND_URL`.
+- The frontend is configured to use `npm`, not `pnpm`.
 
 ## Deploy using the Vercel dashboard
 
